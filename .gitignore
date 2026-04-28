@@ -1,0 +1,9 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+data/
+*.db
+.DS_Store
+nginx_ssl/

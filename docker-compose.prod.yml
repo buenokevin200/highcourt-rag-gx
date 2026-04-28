@@ -1,0 +1,76 @@
+services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: hcourt-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - nginx_ssl:/etc/nginx/ssl
+    restart: unless-stopped
+    networks:
+      - hcourt-network
+
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: hcourt-chromadb
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+    networks:
+      - hcourt-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hcourt-backend
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8001
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - DEBUG=false
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/hcourt.db}
+    volumes:
+      - backend_data:/app/data
+    restart: unless-stopped
+    networks:
+      - hcourt-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hcourt-frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - hcourt-network
+
+volumes:
+  chroma_data:
+  backend_data:
+  nginx_ssl:
+
+networks:
+  hcourt-network:
+    driver: bridge
